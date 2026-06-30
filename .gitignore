@@ -1,0 +1,29 @@
+# direnv + venv
+.direnv/
+.venv/
+
+# secrets
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
