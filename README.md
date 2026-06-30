@@ -1,6 +1,6 @@
 # claude-codebase-agent
 
-A standalone Python tool built on the **Claude Agent SDK** that explores unfamiliar codebases and implements features from high-level natural-language requirements. Point it at any Git repository, ask a question or describe a feature, and the agent handles discovery, planning, implementation, and verification — with a human checkpoint before any file is modified.
+A standalone Python tool built on the **Claude Agent SDK** that explores unfamiliar codebases and implements features from high-level natural-language requirements. Point it at any Git repository, ask a question or describe a feature, and the agent handles discovery, planning, implementation, and verification — with a mandatory human checkpoint before any file is modified.
 
 ---
 
@@ -40,7 +40,7 @@ python -m claude_codebase_agent
 claude-codebase-agent
 ```
 
-You'll be prompted for a target repo path (absolute or relative). The agent then shows a 3-option menu.
+You'll be prompted for a target repo path, then shown a 3-option menu.
 
 ---
 
@@ -48,56 +48,40 @@ You'll be prompted for a target repo path (absolute or relative). The agent then
 
 ### 1) Ask a question
 
-Single-shot read-only question answered with Grep-first discovery.
+Single-shot read-only lookup. The agent Greps for the most specific anchor first, reads only the files it needs, and returns precise file + line references.
 
 ```
-Target repo path> /path/to/spring-petclinic
-
-Menu:
-  1) Ask a question about the codebase
 choice> 1
-question> where is the owner service?
+question> where is the JWT token validation logic?
 ```
-
-The agent Greps for `OwnerService`, follows imports, and returns file + line references without reading the whole codebase.
 
 ### 2) Adaptive investigation
 
-Open-ended goal explored in 4 steps: map structure → identify high-impact areas → build numbered plan → execute adaptively.
+Open-ended goal explored across four passes: map structure → identify high-impact subsystems → build a numbered plan → execute adaptively.
 
 ```
 choice> 2
-investigation goal> understand how the pet clinic stores and retrieves visit history
+investigation goal> understand how background job processing works
 ```
 
-Returns four structured sections: **Structure Map**, **High-Impact Areas**, **Plan**, **Report** (with Findings, Open Questions, Suggested Next Actions).
+Returns four structured sections: **Structure Map**, **High-Impact Areas**, **Plan**, **Report**.
 
 ### 3) Implement a feature
 
-Full plan → confirm → write → verify pipeline.
+Full plan → confirm → write → verify pipeline. The agent investigates the codebase, produces a concrete plan, **pauses for your approval**, then implements and runs tests until they pass.
 
 ```
 choice> 3
-feature requirement (high-level)> add a pet weight field to the owner's pet list view
-Verify command [leave blank to auto-detect]>
+feature requirement> add a pet weight field (kg, decimal) to the pet entity,
+                     owner list view, and add/edit form
 ```
-
-The agent:
-1. Discovers the codebase (read-only)
-2. Produces a concrete implementation plan (files, functions, tests, verify command)
-3. **Pauses and asks for your approval** before making any changes
-4. Implements the plan and runs the verify command until it passes
-5. Prints `git diff --stat` and an undo hint
 
 ---
 
 ## Worked Example
 
 ```bash
-# Clone a real Java project to use as the target
 git clone https://github.com/spring-projects/spring-petclinic /tmp/petclinic
-
-# Run the agent
 python -m claude_codebase_agent
 ```
 
@@ -106,22 +90,21 @@ Target repo path> /tmp/petclinic
 
 choice> 1
 question> where is the owner service?
-# → src/main/java/org/springframework/samples/petclinic/owner/OwnerRepository.java:34
+→ src/main/java/.../owner/OwnerRepository.java:34
 
 choice> 3
 feature requirement> add a pet weight field (kg, decimal) to the pet entity and owner's pet list view
 Verify command [leave blank to auto-detect]>
-# Agent auto-detects pom.xml → runs: mvn -q test
+# auto-detected: mvn -q test
 
 STEP 1/4  Discovering the codebase (read-only) …
 STEP 2/4  Building implementation plan …
 
-[plan printed here]
+[plan printed — review it]
 
 Proceed with implementation? [y/N] y
 
 STEP 4/4  Implementing …
-[agent edits files and runs mvn -q test]
 
 DIFF SUMMARY
  src/main/java/.../Pet.java            |  8 +++
@@ -136,30 +119,35 @@ To undo everything: git -C /tmp/petclinic checkout . && git clean -fd
 
 ## Safety
 
-- Always use a **git repository** as the target so changes are revertible.
-- Review the implementation plan before approving at the `[y/N]` prompt.
-- After the agent finishes, inspect the diff: `git -C <target_dir> diff`
-- To revert all changes: `git -C <target_dir> checkout . && git clean -fd`
+- Always target a **git repo** so changes are revertible.
+- Review the plan carefully before typing `y` at the confirm prompt.
+- Inspect the diff after: `git -C <target_dir> diff`
+- Undo everything: `git -C <target_dir> checkout . && git clean -fd`
+
+The builder agent is constrained by its system prompt never to modify files outside the `target_dir` you supply.
 
 ---
 
 ## Environment Variables
 
-| Variable | Required | Purpose |
+| Variable | Required | Description |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | Yes | Anthropic API authentication |
+| `ANTHROPIC_API_KEY` | **Yes** | Anthropic API key — set in `.env` |
 | `VERIFY_CMD` | No | Override the auto-detected build/test command |
+
+See [docs/configuration.md](docs/configuration.md) for the full list of options.
 
 ---
 
-## Optional: MCP Server Integration
+## Documentation
 
-Copy `.mcp.json.example` to `.mcp.json` and fill in tokens to give the agent access to additional context servers (e.g., GitHub, Jira, Confluence):
-
-```bash
-cp .mcp.json.example .mcp.json
-# Edit .mcp.json and add your server configs and tokens
-```
+| Document | Description |
+|---|---|
+| [docs/running.md](docs/running.md) | Setup, starting the agent, running tests, troubleshooting |
+| [docs/user-guide.md](docs/user-guide.md) | Mode-by-mode walkthrough with example sessions and tips |
+| [docs/architecture.md](docs/architecture.md) | Module responsibilities, data flow, design decisions |
+| [docs/api-reference.md](docs/api-reference.md) | Full API reference for programmatic use |
+| [docs/configuration.md](docs/configuration.md) | Env vars, verify command detection, MCP setup, SDK options |
 
 ---
 
@@ -167,5 +155,16 @@ cp .mcp.json.example .mcp.json
 
 ```bash
 pytest
-# All smoke tests verify imports and structure only — no API calls, no network.
+# 5 smoke tests — import-only, no API calls, ~0.2s
 ```
+
+---
+
+## Optional: MCP Server Integration
+
+```bash
+cp .mcp.json.example .mcp.json
+# Edit .mcp.json to add GitHub, Jira, or other MCP servers
+```
+
+See [docs/configuration.md](docs/configuration.md#mcp-server-integration-optional) for details.
